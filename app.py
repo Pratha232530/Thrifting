@@ -113,8 +113,13 @@ def create_product():
 
 @app.route('/api/products/<product_id>', methods=['DELETE'])
 def delete_product(product_id):
+    try:
+        pid = int(product_id)
+    except ValueError:
+        pid = product_id
+
     result = products_collection.delete_one({
-        "id": int(product_id)
+        "$or": [{"id": product_id}, {"id": pid}]
     })
 
     if result.deleted_count > 0:
@@ -178,8 +183,13 @@ def admin_products():
 
 @app.route('/api/admin/approve-product/<product_id>', methods=['PUT'])
 def approve_product(product_id):
+    try:
+        pid = int(product_id)
+    except ValueError:
+        pid = product_id
+
     result = products_collection.update_one(
-        {"id": int(product_id)},
+        {"$or": [{"id": product_id}, {"id": pid}]},
         {"$set": {"status": "approved"}}
     )
 
@@ -196,8 +206,13 @@ def approve_product(product_id):
 
 @app.route('/api/admin/reject-product/<product_id>', methods=['PUT'])
 def reject_product(product_id):
+    try:
+        pid = int(product_id)
+    except ValueError:
+        pid = product_id
+
     result = products_collection.update_one(
-        {"id": int(product_id)},
+        {"$or": [{"id": product_id}, {"id": pid}]},
         {"$set": {"status": "rejected"}}
     )
 
@@ -259,11 +274,16 @@ def all_orders():
 @app.route('/api/orders/update/<order_id>', methods=['PUT'])
 def update_order(order_id):
     data = request.json
+    status = data.get("status")
 
-    # Changed from "id" to "orderId" to match frontend generation
+    try:
+        oid = int(order_id)
+    except ValueError:
+        oid = order_id
+
     result = orders_collection.update_one(
-        {"orderId": order_id},
-        {"$set": {"status": data.get("status")}}
+        {"$or": [{"orderId": order_id}, {"orderId": oid}, {"id": order_id}, {"id": oid}]},
+        {"$set": {"status": status}}
     )
 
     if result.modified_count > 0:
@@ -290,26 +310,38 @@ def generate_real_tryon():
     try:
         print("🚀 Connecting to FREE Hugging Face AI Servers...")
         
-        # 1. SMART IMAGE HANDLER: Deals with Unsplash URLs AND Webcam Selfies
+        # 1. SMART IMAGE HANDLER: Deals with URLs AND Base64 images
         def prepare_image(img_input, prefix):
-            if img_input.startswith('http'):
+            if img_input.startswith(('http://', 'https://')):
                 temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg", prefix=prefix)
-                urllib.request.urlretrieve(img_input, temp_file.name)
+                req = urllib.request.Request(img_input, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                with urllib.request.urlopen(req) as response, open(temp_file.name, 'wb') as out_file:
+                    out_file.write(response.read())
                 return temp_file.name
-            else:
+
+            if "," in img_input:
                 header, encoded = img_input.split(",", 1)
-                file_ext = header.split(";")[0].split("/")[1]
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}", prefix=prefix)
-                temp_file.write(base64.b64decode(encoded))
-                temp_file.close()
-                return temp_file.name
+                if "/" in header and ";" in header:
+                    file_ext = header.split(";")[0].split("/")[1]
+                    if file_ext == "jpeg":
+                        file_ext = "jpg"
+                else:
+                    file_ext = "png"
+            else:
+                encoded = img_input
+                file_ext = "png"
+
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}", prefix=prefix)
+            temp_file.write(base64.b64decode(encoded))
+            temp_file.close()
+            return temp_file.name
 
         user_img_path = prepare_image(user_image_b64, "user_")
         garm_img_path = prepare_image(garment_image_b64, "garm_")
 
         # 2. Connect to the free public IDM-VTON space
         hf_token = os.getenv("HF_TOKEN")
-        client = Client("yisol/IDM-VTON", hf_token=hf_token) if hf_token else Client("yisol/IDM-VTON")
+        client = Client("yisol/IDM-VTON", token=hf_token) if hf_token else Client("yisol/IDM-VTON")
         # 3. Send the images to the free AI
         result = client.predict(
             dict={"background": handle_file(user_img_path), "layers": [], "composite": None},
@@ -339,7 +371,7 @@ def generate_real_tryon():
 
     except Exception as e:
         print(f"⚠️ Free API Error: {e}")
-        return jsonify({"message": "Hugging Face servers are currently busy. Try again in a minute!"}), 500
+        return jsonify({"message": f"AI Generation Error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     # Runs the server on http://localhost:5000

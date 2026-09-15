@@ -2777,33 +2777,6 @@
             `).join('');
         }
 
-
-        async function tryOn() {
-
-    const file =
-        document.getElementById("userImage")
-        .files[0];
-
-    const formData = new FormData();
-
-    formData.append("user", file);
-
-    const response =
-        await fetch(
-            "http://127.0.0.1:5000/tryon",
-            {
-                method: "POST",
-                body: formData
-            }
-        );
-
-    const data = await response.json();
-
-    document.getElementById(
-        "resultImage"
-    ).src = data.result;
-}
-
          // --- Minor form & TryOn logic ---
         function openProfileEditModal() { document.getElementById("profile-edit-modal").classList.add("active"); }
         function closeProfileEditModal() { document.getElementById("profile-edit-modal").classList.remove("active"); }
@@ -2921,47 +2894,45 @@ function triggerVirtualTryOn(productId) {
             const userImageBase64 = userImageEl.src;
             const garmentImageBase64 = garmentImageEl.src;
             
+            if (!userImageBase64 || userImageBase64.includes("undefined")) {
+                showToast("Please upload a selfie or take a webcam photo first!", "error");
+                return;
+            }
+
             // Change button to loading state
             const originalText = btn.innerText;
             btn.innerText = "✨ Stitching Outfit... (Takes ~15s)";
             btn.disabled = true;
             btn.style.background = "#7f8c8d";
-            
-            // ... inside processRealAITryOn() ...
 
-try {
-    // 1. CHANGE THIS URL: Point it to your local PHP server (e.g., XAMPP/WAMP)
-    // Make sure the path matches exactly where you saved process_tryon.php
-    const response = await fetch('http://localhost:5000/api/try-on/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-        userImage: userImageBase64,
-        garmentImage: garmentImageBase64,
-        category: "upper_body" 
-    })
-});
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-    // Display the new AI-generated image
-    userImageEl.src = data.generated_image_url;
-    
-    // ADD THIS LINE to hide the floating thumbnail!
-    garmentImageEl.style.display = "none"; 
-    
-    showToast("AI Try-On Complete! ✨", "success");
-    } else {
-        showToast(data.message || "AI Generation Failed", "error");
-    }
-    
-} catch (error) {
-    // 2. CHANGE THIS ERROR MESSAGE: It's no longer looking for app.py
-    console.error(error); // Helpful for debugging in the browser console
-    showToast("Network Error: Make sure your local PHP server (Apache) is running.", "error");
-} finally {
-// ... {
+            try {
+                const response = await fetch('http://localhost:5000/api/try-on/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userImage: userImageBase64,
+                        garmentImage: garmentImageBase64,
+                        category: "upper_body" 
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Display the new AI-generated image
+                    userImageEl.src = data.generated_image_url;
+                    
+                    // Hide the floating thumbnail
+                    garmentImageEl.style.display = "none"; 
+                    
+                    showToast("AI Try-On Complete! ✨", "success");
+                } else {
+                    showToast(data.message || "AI Generation Failed", "error");
+                }
+            } catch (error) {
+                console.error(error);
+                showToast("Network Error: Make sure your Flask backend server (app.py) is running on port 5000.", "error");
+            } finally {
                 // Reset button
                 btn.innerText = originalText;
                 btn.disabled = false;
